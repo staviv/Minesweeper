@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>שולה מוקשים PRO</title>
+    <style>
+        :root {
+            --cell-size: 30px;
+            --border-color: #7b7b7b;
+            --bg-color: #c0c0c0;
+            --revealed-bg: #bdbdbd;
+            --active-btn-border: #0055cc;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #333;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 10px;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            overflow: hidden;
+        }
+
+        #game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #game-container {
+            background-color: var(--bg-color);
+            border: 3px solid;
+            border-color: var(--border-color) #fff #fff var(--border-color);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .controls-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            background-color: var(--bg-color);
+            border: 3px solid;
+            border-color: var(--border-color) #fff #fff var(--border-color);
+            padding: 10px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            gap: 10px;
+        }
+
+        .status-display {
+            background-color: #000;
+            color: #ff0000;
+            font-size: 1.5rem;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 5px 10px;
+            border: 2px inset #808080;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .game-button {
+            font-size: 2rem;
+            width: 50px;
+            height: 50px;
+            border: 3px solid;
+            border-color: #fff var(--border-color) var(--border-color) #fff;
+            background-color: var(--bg-color);
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .game-button:active { border-color: var(--border-color); }
+
+        #mode-toggle-btn.active { border: 3px solid var(--active-btn-border); }
+
+        #difficulty-selector {
+            padding: 5px;
+            font-size: 1rem;
+            border: 2px inset #808080;
+            margin-bottom: 10px;
+        }
+
+        #game-board {
+            display: grid;
+            border: 3px solid;
+            border-color: var(--border-color) #fff #fff var(--border-color);
+            touch-action: none;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background-color: var(--bg-color);
+            border: 2px solid;
+            border-color: #fff var(--border-color) var(--border-color) #fff;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: calc(var(--cell-size) * 0.6);
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.1s ease-in-out;
+        }
+        
+        .cell.revealed {
+            background-color: var(--revealed-bg);
+            border: 1px solid #7b7b7b;
+            animation: pop 0.2s ease-out;
+        }
+
+        @keyframes pop { 0% { transform: scale(0.8); } 100% { transform: scale(1); } }
+
+        .cell.flagged::before { content: '🚩'; font-size: calc(var(--cell-size) * 0.6); }
+        .cell.mine::before { content: '💣'; font-size: calc(var(--cell-size) * 0.6); }
+        .cell.mine.exploded { background-color: red; }
+
+        .cell[data-mines="1"] { color: #0000ff; } .cell[data-mines="2"] { color: #008200; }
+        .cell[data-mines="3"] { color: #ff0000; } .cell[data-mines="4"] { color: #000084; }
+        .cell[data-mines="5"] { color: #840000; } .cell[data-mines="6"] { color: #008284; }
+        .cell[data-mines="7"] { color: #840084; } .cell[data-mines="8"] { color: #757575; }
+
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+            width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);
+            justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background-color: var(--bg-color); padding: 20px;
+            border: 3px solid; border-color: #fff var(--border-color) var(--border-color) #fff;
+            text-align: center; min-width: 280px; max-width: 90%;
+        }
+        .modal-content h2 { margin-top: 0; }
+        .modal-button {
+            padding: 10px 20px; font-size: 1rem; cursor: pointer;
+            border: 2px solid; border-color: #fff var(--border-color) var(--border-color) #fff;
+            background-color: var(--bg-color); margin: 5px;
+        }
+        #stats-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        #stats-table td, #stats-table th { padding: 8px; border: 1px solid #999; }
+        #stats-table th { background-color: #ddd; }
+
+        .bottom-toolbar {
+            display: flex;
+            gap: 15px;
+        }
+        .toolbar-button {
+            font-size: 1.5rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <div id="game-container">
+            <div class="controls-panel">
+                <div id="flags-count" class="status-display">0</div>
+                <button id="new-game-btn" class="game-button">🙂</button>
+                <button id="mode-toggle-btn" class="game-button" title="החלף מצב חפירה/דגל">⛏️</button>
+                <div id="timer" class="status-display">0</div>
+            </div>
+            
+            <div>
+                <label for="difficulty-selector">רמת קושי: </label>
+                <select id="difficulty-selector">
+                    <option value="easy">קל (9x9)</option>
+                    <option value="medium" selected>בינוני (16x16)</option>
+                    <option value="hard">קשה (16x30)</option>
+                </select>
+            </div>
+
+            <div id="game-board"></div>
+        </div>
+        <div class="bottom-toolbar">
+            <button id="sound-toggle-btn" class="toolbar-button">🔊</button>
+            <button id="stats-btn" class="toolbar-button">🏆</button>
+        </div>
+    </div>
+
+    <!-- מודלים (חלונות קופצים) -->
+    <div id="message-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-message"></h2>
+            <button id="modal-new-game-btn" class="modal-button">משחק חדש</button>
+        </div>
+    </div>
+
+    <div id="resume-modal" class="modal">
+        <div class="modal-content">
+            <h2>משחק קודם נמצא</h2>
+            <p>האם תרצה להמשיך את המשחק הקודם?</p>
+            <button id="resume-yes-btn" class="modal-button">כן, המשך</button>
+            <button id="resume-no-btn" class="modal-button">לא, התחל חדש</button>
+        </div>
+    </div>
+
+    <div id="stats-modal" class="modal">
+        <div class="modal-content">
+            <h2>סטטיסטיקות</h2>
+            <table id="stats-table">
+                <thead>
+                    <tr><th>רמה</th><th>הזמן הטוב ביותר</th><th>משחקים</th><th>ניצחונות</th><th>אחוז ניצחון</th></tr>
+                </thead>
+                <tbody>
+                    <!-- יאוכלס ע"י JS -->
+                </tbody>
+            </table>
+            <p>רצף ניצחונות נוכחי: <span id="current-streak">0</span></p>
+            <p>רצף שיא: <span id="max-streak">0</span></p>
+            <button id="stats-close-btn" class="modal-button">סגור</button>
+            <button id="stats-reset-btn" class="modal-button">אפס נתונים</button>
+        </div>
+    </div>
+
+    <script>
+        // --- הגדרות ומשתנים גלובליים ---
+        const DIFFICULTY_LEVELS = {
+            easy:   { rows: 9,  cols: 9,  mines: 10, name: 'קל' },
+            medium: { rows: 16, cols: 16, mines: 40, name: 'בינוני' },
+            hard:   { rows: 16, cols: 30, mines: 99, name: 'קשה' }
+        };
+
+        let gameState = {};
+        let gameSettings;
+        let timerInterval, touchTimer;
+        let soundEnabled = true;
+        let audioContext;
+        let stats;
+
+        // --- DOM Elements ---
+        const elements = {
+            board: document.getElementById('game-board'),
+            flagsCount: document.getElementById('flags-count'),
+            timer: document.getElementById('timer'),
+            newGameBtn: document.getElementById('new-game-btn'),
+            difficultySelector: document.getElementById('difficulty-selector'),
+            modeToggleBtn: document.getElementById('mode-toggle-btn'),
+            soundToggleBtn: document.getElementById('sound-toggle-btn'),
+            statsBtn: document.getElementById('stats-btn'),
+            messageModal: {
+                modal: document.getElementById('message-modal'),
+                message: document.getElementById('modal-message'),
+                newGameBtn: document.getElementById('modal-new-game-btn')
+            },
+            resumeModal: {
+                modal: document.getElementById('resume-modal'),
+                yesBtn: document.getElementById('resume-yes-btn'),
+                noBtn: document.getElementById('resume-no-btn')
+            },
+            statsModal: {
+                modal: document.getElementById('stats-modal'),
+                closeBtn: document.getElementById('stats-close-btn'),
+                resetBtn: document.getElementById('stats-reset-btn'),
+                tableBody: document.querySelector('#stats-table tbody'),
+                currentStreak: document.getElementById('current-streak'),
+                maxStreak: document.getElementById('max-streak')
+            }
+        };
+
+        // --- אודיו ורטט ---
+        function initAudio() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    console.error("Web Audio API is not supported in this browser");
+                    soundEnabled = false;
+                }
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled || !audioContext) return;
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+
+            switch (type) {
+                case 'click':
+                    oscillator.type = 'triangle';
+                    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.1);
+                    break;
+                case 'flag':
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.1);
+                    break;
+                case 'explosion':
+                    oscillator.type = 'sawtooth';
+                    oscillator.frequency.setValueAtTime(110, audioContext.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(55, audioContext.currentTime + 0.5);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.5);
+                    break;
+                case 'win':
+                    const frequencies = [523.25, 659.25, 783.99, 1046.50];
+                    frequencies.forEach((freq, i) => {
+                        const osc = audioContext.createOscillator();
+                        const gn = audioContext.createGain();
+                        osc.connect(gn);
+                        gn.connect(audioContext.destination);
+                        gn.gain.setValueAtTime(0.1, audioContext.currentTime + i * 0.1);
+                        osc.frequency.setValueAtTime(freq, audioContext.currentTime + i * 0.1);
+                        gn.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + i * 0.1 + 0.1);
+                        osc.start(audioContext.currentTime + i * 0.1);
+                        osc.stop(audioContext.currentTime + i * 0.1 + 0.1);
+                    });
+                    return; // Prevent main oscillator from starting
+            }
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.5);
+        }
+
+        function vibrate(pattern) {
+            if ('vibrate' in navigator) {
+                navigator.vibrate(pattern);
+            }
+        }
+
+        // --- ניהול מצב משחק (State Management) ---
+        function saveState() {
+            if (gameState.gameOver) {
+                localStorage.removeItem('minesweeper_saved_state');
+            } else {
+                localStorage.setItem('minesweeper_saved_state', JSON.stringify(gameState));
+            }
+        }
+
+        function loadState() {
+            const savedState = localStorage.getItem('minesweeper_saved_state');
+            return savedState ? JSON.parse(savedState) : null;
+        }
+
+        function saveStats() {
+            localStorage.setItem('minesweeper_stats', JSON.stringify(stats));
+        }
+
+        function loadStats() {
+            const savedStats = localStorage.getItem('minesweeper_stats');
+            if (savedStats) {
+                stats = JSON.parse(savedStats);
+            } else {
+                stats = {
+                    easy: { bestTime: null, played: 0, won: 0 },
+                    medium: { bestTime: null, played: 0, won: 0 },
+                    hard: { bestTime: null, played: 0, won: 0 },
+                    currentStreak: 0,
+                    maxStreak: 0
+                };
+            }
+        }
+
+        // --- פונקציות אתחול וניהול משחק ---
+        function initGame(fromSave = false) {
+            if (!fromSave) {
+                const difficulty = elements.difficultySelector.value;
+                gameSettings = DIFFICULTY_LEVELS[difficulty];
+                gameState = {
+                    board: [],
+                    gameOver: false,
+                    firstClick: true,
+                    isFlaggingMode: false,
+                    flagsPlaced: 0,
+                    time: 0,
+                    difficulty: difficulty
+                };
+                createBoardData();
+            } else {
+                gameSettings = DIFFICULTY_LEVELS[gameState.difficulty];
+                elements.difficultySelector.value = gameState.difficulty;
+            }
+            
+            clearInterval(timerInterval);
+            timerInterval = null;
+            if (!gameState.firstClick && !gameState.gameOver) {
+                startTimer();
+            }
+
+            updateUI();
+            updateBoardSize();
+            renderBoard();
+            updateBoardFromState();
+        }
+
+        function updateUI() {
+            elements.newGameBtn.textContent = '🙂';
+            elements.modeToggleBtn.textContent = gameState.isFlaggingMode ? '🚩' : '⛏️';
+            elements.modeToggleBtn.classList.toggle('active', gameState.isFlaggingMode);
+            elements.flagsCount.textContent = gameSettings.mines - gameState.flagsPlaced;
+            elements.timer.textContent = gameState.time;
+            elements.messageModal.modal.style.display = 'none';
+        }
+
+        function updateBoardSize() {
+            const container = document.getElementById('game-container');
+            const controls = document.querySelector('.controls-panel');
+            const selector = document.getElementById('difficulty-selector');
+            
+            const availableWidth = window.innerWidth - 40;
+            const availableHeight = window.innerHeight - container.offsetTop - controls.offsetHeight - selector.offsetHeight - 100;
+
+            const sizeFromWidth = Math.floor(availableWidth / gameSettings.cols);
+            const sizeFromHeight = Math.floor(availableHeight / gameSettings.rows);
+
+            const newCellSize = Math.min(sizeFromWidth, sizeFromHeight, 60);
+            
+            document.documentElement.style.setProperty('--cell-size', `${newCellSize}px`);
+            elements.board.style.gridTemplateColumns = `repeat(${gameSettings.cols}, var(--cell-size))`;
+            elements.board.style.gridTemplateRows = `repeat(${gameSettings.rows}, var(--cell-size))`;
+        }
+
+        function createBoardData() {
+            gameState.board = Array.from({ length: gameSettings.rows }, () =>
+                Array.from({ length: gameSettings.cols }, () => ({
+                    isMine: false, isRevealed: false, isFlagged: false, neighborMines: 0
+                }))
+            );
+        }
+
+        function placeMines(firstClickRow, firstClickCol) {
+            let minesToPlace = gameSettings.mines;
+            while (minesToPlace > 0) {
+                const r = Math.floor(Math.random() * gameSettings.rows);
+                const c = Math.floor(Math.random() * gameSettings.cols);
+                const isFirstClickArea = Math.abs(r - firstClickRow) <= 1 && Math.abs(c - firstClickCol) <= 1;
+                if (!gameState.board[r][c].isMine && !isFirstClickArea) {
+                    gameState.board[r][c].isMine = true;
+                    minesToPlace--;
+                }
+            }
+            calculateNeighborMines();
+        }
+
+        function calculateNeighborMines() {
+            for (let r = 0; r < gameSettings.rows; r++) {
+                for (let c = 0; c < gameSettings.cols; c++) {
+                    if (gameState.board[r][c].isMine) continue;
+                    gameState.board[r][c].neighborMines = getNeighbors(r, c).filter(n => gameState.board[n.r][n.c].isMine).length;
+                }
+            }
+        }
+
+        function renderBoard() {
+            elements.board.innerHTML = '';
+            for (let r = 0; r < gameSettings.rows; r++) {
+                for (let c = 0; c < gameSettings.cols; c++) {
+                    const cellElement = document.createElement('div');
+                    cellElement.className = 'cell';
+                    cellElement.dataset.row = r;
+                    cellElement.dataset.col = c;
+                    addCellEventListeners(cellElement, r, c);
+                    elements.board.appendChild(cellElement);
+                }
+            }
+        }
+
+        function updateBoardFromState() {
+            for (let r = 0; r < gameSettings.rows; r++) {
+                for (let c = 0; c < gameSettings.cols; c++) {
+                    const cell = gameState.board[r][c];
+                    const cellElement = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                    if (cell.isFlagged) cellElement.classList.add('flagged');
+                    if (cell.isRevealed) {
+                        cellElement.classList.add('revealed');
+                        if (cell.neighborMines > 0) {
+                            cellElement.textContent = cell.neighborMines;
+                            cellElement.dataset.mines = cell.neighborMines;
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- לוגיקת אינטראקציה ---
+        function addCellEventListeners(element, r, c) {
+            element.addEventListener('click', () => handlePrimaryAction(r, c));
+            element.addEventListener('contextmenu', (e) => { e.preventDefault(); handleSecondaryAction(r, c); });
+            element.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touchTimer = setTimeout(() => { handleSecondaryAction(r, c); touchTimer = null; }, 500);
+            }, { passive: false });
+            element.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                if (touchTimer) { clearTimeout(touchTimer); handlePrimaryAction(r, c); }
+            });
+        }
+
+        function handlePrimaryAction(r, c) { gameState.isFlaggingMode ? handleFlag(r, c) : handleReveal(r, c); }
+        function handleSecondaryAction(r, c) { gameState.isFlaggingMode ? handleReveal(r, c) : handleFlag(r, c); }
+
+        function handleReveal(r, c) {
+            if (gameState.gameOver || gameState.board[r][c].isFlagged) return;
+            const cell = gameState.board[r][c];
+            if (cell.isRevealed) { handleChord(r, c); return; }
+
+            if (gameState.firstClick) {
+                startTimer();
+                placeMines(r, c);
+                gameState.firstClick = false;
+                stats[gameState.difficulty].played++;
+            }
+
+            if (cell.isMine) { endGame(false, r, c); return; }
+            
+            playSound('click');
+            elements.newGameBtn.textContent = '😮';
+            setTimeout(() => { if (!gameState.gameOver) elements.newGameBtn.textContent = '🙂'; }, 200);
+
+            revealCell(r, c);
+            checkWinCondition();
+            saveState();
+        }
+
+        function handleFlag(r, c) {
+            if (gameState.gameOver || gameState.board[r][c].isRevealed) return;
+            playSound('flag');
+            vibrate(20);
+            const cell = gameState.board[r][c];
+            const cellElement = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+            cell.isFlagged = !cell.isFlagged;
+            if (cell.isFlagged) {
+                gameState.flagsPlaced++;
+                cellElement.classList.add('flagged');
+            } else {
+                gameState.flagsPlaced--;
+                cellElement.classList.remove('flagged');
+            }
+            elements.flagsCount.textContent = gameSettings.mines - gameState.flagsPlaced;
+            checkWinCondition();
+            saveState();
+        }
+
+        function revealCell(r, c) {
+            if (r < 0 || r >= gameSettings.rows || c < 0 || c >= gameSettings.cols) return;
+            const cell = gameState.board[r][c];
+            if (cell.isRevealed || cell.isFlagged) return;
+
+            cell.isRevealed = true;
+            const cellElement = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+            cellElement.classList.add('revealed');
+
+            if (cell.neighborMines > 0) {
+                cellElement.textContent = cell.neighborMines;
+                cellElement.dataset.mines = cell.neighborMines;
+            } else {
+                getNeighbors(r, c).forEach(n => revealCell(n.r, n.c));
+            }
+        }
+        
+        function handleChord(r, c) {
+            const cell = gameState.board[r][c];
+            if (!cell.isRevealed || cell.neighborMines === 0) return;
+
+            const neighbors = getNeighbors(r, c);
+            const flaggedNeighbors = neighbors.filter(n => gameState.board[n.r][n.c].isFlagged);
+            const hiddenNeighbors = neighbors.filter(n => !gameState.board[n.r][n.c].isRevealed && !gameState.board[n.r][n.c].isFlagged);
+
+            // 1. חשיפה אוטומטית: אם מספר הדגלים תואם למספר, חשוף את השאר
+            if (flaggedNeighbors.length === cell.neighborMines) {
+                hiddenNeighbors.forEach(n => handleReveal(n.r, n.c));
+            }
+            // 2. סימון דגלים אוטומטי: אם מספר המשבצות הנסתרות שווה למספר המוקשים שנותרו
+            else if (cell.neighborMines - flaggedNeighbors.length === hiddenNeighbors.length) {
+                hiddenNeighbors.forEach(n => {
+                    // בדוק שאין כבר דגל לפני שאתה מנסה להוסיף אחד
+                    if (!gameState.board[n.r][n.c].isFlagged) {
+                        handleFlag(n.r, n.c);
+                    }
+                });
+            }
+        }
+
+        // --- סיום משחק וסטטיסטיקות ---
+        function checkWinCondition() {
+            const revealedCount = gameState.board.flat().filter(cell => cell.isRevealed).length;
+            if (revealedCount === gameSettings.rows * gameSettings.cols - gameSettings.mines) {
+                endGame(true);
+            }
+        }
+
+        function endGame(isWin, clickedRow, clickedCol) {
+            if (gameState.gameOver) return;
+            gameState.gameOver = true;
+            clearInterval(timerInterval);
+            saveState(); // To remove saved game
+
+            if (isWin) {
+                playSound('win');
+                vibrate([100, 50, 100]);
+                elements.newGameBtn.textContent = '😎';
+                elements.messageModal.message.textContent = `ניצחת! הזמן שלך: ${gameState.time} שניות`;
+                updateStatsOnWin();
+            } else {
+                playSound('explosion');
+                vibrate(500);
+                elements.newGameBtn.textContent = '😵';
+                revealAllMines(clickedRow, clickedCol);
+                elements.messageModal.message.textContent = 'הפסדת! נתקלת במוקש.';
+                updateStatsOnLoss();
+            }
+            saveStats();
+            setTimeout(() => elements.messageModal.modal.style.display = 'flex', isWin ? 500 : 1500);
+        }
+
+        function revealAllMines(clickedRow, clickedCol) {
+            const mines = [];
+            gameState.board.forEach((row, r) => {
+                row.forEach((cell, c) => {
+                    if (cell.isMine) mines.push({r, c});
+                });
+            });
+
+            // אנימציית גל הדף
+            mines.sort((a, b) => {
+                const distA = Math.hypot(a.r - clickedRow, a.c - clickedCol);
+                const distB = Math.hypot(b.r - clickedRow, b.c - clickedCol);
+                return distA - distB;
+            });
+
+            mines.forEach((mine, i) => {
+                setTimeout(() => {
+                    const cellElement = document.querySelector(`.cell[data-row='${mine.r}'][data-col='${mine.c}']`);
+                    cellElement.classList.add('mine');
+                    if (mine.r === clickedRow && mine.c === clickedCol) {
+                        cellElement.classList.add('exploded');
+                    }
+                }, i * 20);
+            });
+        }
+
+        function updateStatsOnWin() {
+            const diff = gameState.difficulty;
+            stats[diff].won++;
+            stats.currentStreak++;
+            if (stats.currentStreak > stats.maxStreak) {
+                stats.maxStreak = stats.currentStreak;
+            }
+            if (stats[diff].bestTime === null || gameState.time < stats[diff].bestTime) {
+                stats[diff].bestTime = gameState.time;
+            }
+        }
+
+        function updateStatsOnLoss() {
+            stats.currentStreak = 0;
+        }
+
+        // --- פונקציות עזר ו-UI ---
+        function getNeighbors(r, c) {
+            const neighbors = [];
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < gameSettings.rows && nc >= 0 && nc < gameSettings.cols) {
+                        neighbors.push({ r: nr, c: nc });
+                    }
+                }
+            }
+            return neighbors;
+        }
+
+        function startTimer() {
+            if (timerInterval) return;
+            timerInterval = setInterval(() => {
+                gameState.time++;
+                elements.timer.textContent = gameState.time;
+            }, 1000);
+        }
+
+        function toggleFlaggingMode() {
+            gameState.isFlaggingMode = !gameState.isFlaggingMode;
+            elements.modeToggleBtn.textContent = gameState.isFlaggingMode ? '🚩' : '⛏️';
+            elements.modeToggleBtn.classList.toggle('active', gameState.isFlaggingMode);
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            elements.soundToggleBtn.textContent = soundEnabled ? '🔊' : '🔇';
+        }
+
+        function showStats() {
+            elements.statsModal.tableBody.innerHTML = '';
+            Object.keys(DIFFICULTY_LEVELS).forEach(key => {
+                const level = DIFFICULTY_LEVELS[key];
+                const s = stats[key];
+                const winRate = s.played > 0 ? ((s.won / s.played) * 100).toFixed(1) + '%' : 'N/A';
+                const row = `
+                    <tr>
+                        <td>${level.name}</td>
+                        <td>${s.bestTime !== null ? s.bestTime + ' שניות' : 'N/A'}</td>
+                        <td>${s.played}</td>
+                        <td>${s.won}</td>
+                        <td>${winRate}</td>
+                    </tr>
+                `;
+                elements.statsModal.tableBody.innerHTML += row;
+            });
+            elements.statsModal.currentStreak.textContent = stats.currentStreak;
+            elements.statsModal.maxStreak.textContent = stats.maxStreak;
+            elements.statsModal.modal.style.display = 'flex';
+        }
+
+        function resetStats() {
+            if (confirm('האם אתה בטוח שברצונך לאפס את כל הסטטיסטיקות?')) {
+                localStorage.removeItem('minesweeper_stats');
+                loadStats();
+                saveStats();
+                showStats();
+            }
+        }
+
+        // --- Event Listeners גלובליים ---
+        elements.newGameBtn.addEventListener('click', () => initGame());
+        elements.messageModal.newGameBtn.addEventListener('click', () => initGame());
+        elements.difficultySelector.addEventListener('change', () => initGame());
+        elements.modeToggleBtn.addEventListener('click', toggleFlaggingMode);
+        elements.soundToggleBtn.addEventListener('click', toggleSound);
+        elements.statsBtn.addEventListener('click', showStats);
+        elements.statsModal.closeBtn.addEventListener('click', () => elements.statsModal.modal.style.display = 'none');
+        elements.statsModal.resetBtn.addEventListener('click', resetStats);
+        elements.resumeModal.yesBtn.addEventListener('click', () => {
+            elements.resumeModal.modal.style.display = 'none';
+            initGame(true);
+        });
+        elements.resumeModal.noBtn.addEventListener('click', () => {
+            elements.resumeModal.modal.style.display = 'none';
+            initGame();
+        });
+
+        window.addEventListener('resize', updateBoardSize);
+        window.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('click', initAudio, { once: true }); // Init audio on first user interaction
+
+        // --- התחלת המשחק ---
+        loadStats();
+        const savedGame = loadState();
+        if (savedGame && !savedGame.gameOver) {
+            gameState = savedGame;
+            elements.resumeModal.modal.style.display = 'flex';
+        } else {
+            initGame();
+        }
+    </script>
+</body>
+</html>
